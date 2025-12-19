@@ -1,8 +1,8 @@
 log.md
 
-- copied dataloaders from nanochat
-- ollin's boer's gan structure from onnx file for now
-- geneartd chat gpt Discriminator based on GAN
+- duped dataloaders from nanochat
+- ollin's boer's GAN structure ~ Conv2ds + PixelShuffles for the generator
+- TODO: discriminator needs to be fixed lol, right now just copy and paste from some random source
 - tried generating images got Nans and black images when training on mps with l1 + adverserial loss
 - tried just l1 loss, would work a little bit and then would Nan
 - very confused, tried adding some stuff to the model to regulate and stabilize like image stuff and gamma noise, and clamping noise
@@ -30,6 +30,7 @@ log.md
 - fixed shuffle, and also batch size now goes through entire dataset, no memorizing order of the images
 - optimizations: h100 ~ 1minute 40 seconds to train one batch - we are memory bound from data transfers
 - first optimization - dataloader was chopped and unc, needed to fix key bottlenecks. pin memory was an issue so set it to false, increased number of workers and added prefetching
+- using pytorch dataloader, much faster lol
 - around ~45-55 seconds for a batch
 - second optimization: we are now compute bound, kernels are not 
 - nchw - nhwc channels last, torch.compile as well max autotuuuune
