@@ -1,0 +1,61 @@
+log.md
+
+- copied dataloaders from nanochat
+- cloned ollin's boer's gan structure from onnx
+- geneartd chat gpt Discriminator based on GAN
+- tried generating images got Nans and black images when training on mps with l1 + adverserial loss
+- tried just l1 loss, would work a little bit and then would Nan
+- very confused, tried adding some stuff to the model to regulate and stabilize like image stuff and gamma noise, and clamping noise
+- would work for a bit but then crash out (could write an article about this)
+- why the frick is mps not working?
+- train again on CPU with L1 loss and it works?
+- removed gan stuff
+- added back gan stuff
+- loss seems reasonable?
+- tried running inference code, its a muddled mess both for GAN and l1 loss
+- what aer the issues? maybe activation before? let's start with first just l1 
+- todo: check normalization values, check how each activation looks through each block of the generator 
+- DONE: increase batch size as well, make sure values are being shuffled each set, goes through all samples, train longer - DONE
+- connect to a GPU run it - DONE
+- connected GPU, need to go through a full run and test it, increase the batch size a lot more 512 | ~2.5 minutes
+- loss ~ 0.05ish after 85 epochs
+- DONE : train with larger batch size, try out the l1 model after - DONE
+- todo: implement wandb logging and automating the model checkpointing download logic
+- todo: try training out with discriminator training
+- todo: check data coverage on all directions? forward backward, etc.
+- first training run done, can probably train it for longer tbh, loss was still going down
+- doesn't really work, same problems with cpu training. blobby mess, added inference code debugging to show that there is an issue with inference mismatch potentially
+- todo: Need to get teacher forcing stuff done, progressively harder training each time, adding in the fake frames and putting it into the code
+- DONE: currently, training takes long, because we are bottlenecked by dataloading each time. need to profile and see how we can get this down to be pretty fast each time
+- fixed shuffle, and also batch size now goes through entire dataset, no memorizing order of the images
+- optimizations: h100 ~ 1minute 40 seconds to train one batch - we are memory bound from data transfers
+- first optimization - dataloader was chopped and unc, needed to fix key bottlenecks. pin memory was an issue so set it to false, increased number of workers and added prefetching
+- around ~45-55 seconds for a batch
+- second optimization: we are now compute bound, kernels are not 
+- nchw - nhwc channels last, torch.compile as well max autotuuuune
+- didn't work, im bottlenecked by data trasnfers at the moment
+- bfloat16 autocast - the fwd pass and loss copmute is done in bfloat 16 for faster compute, model weights stayin float32 for better precision in accumulating gradients and stability
+- weights are kept in float32, fwd bwd pass (partially) are done in bfloat16
+- weights kept in float32 because of small gradient updates, optimzer states accumulation, weight updating compound with this
+- bfloat16 in bfloat16, gradients are converted back to flaot32, activations are temporary
+- DONE: work on changing dataset ilve size to float16, then using that instead to save some data transfer time.
+- fixed unneccesary float conversions, removed channels last for now and increased number of workers. gzip compression was also causing issues in dataloading
+- now batch time is around 27 seconds per batch, 26 if we increase batch size to 2048
+- TODO: still memory bound, maybe not using hdf5 and using something like mampped memory modes here to make it even faster, increase to bigger prefetch size
+- TODO: check if channels_last conversion is needed, maybe not? better way of doing it
+- TODO: investigate non_blocking and pinmemory, is it actually helping increase training speeds or no (as of now no)
+- TODO: label and clean up the model.py code ,amek it configurable - need to really understand this so read and review it again
+- DONE: add in tanh output acitvation as well teacher forcing implementation
+- optimization memory packed nums get it down to like 21 seconds per batch, pin_memory for some reason still adds some OS memory launches with multiple workers, setting it off, also reducing prefetch factors.
+- memory packed numpy files eliminate hdf5 overhead, we are just dealing with everything in ram
+- pinned memory issue - https://discuss.pytorch.org/t/how-do-i-use-pinned-memory-with-multiple-workers-in-a-pytorch-dataloader/176927
+- precomputing the controls instead of doing it on the fly with the dataloader, and also generating the noise on device per batch, we shave off another second - 20 seconds per batch
+- this is my limit i believe. i think copy would help for torch from numpy, idk why - something with pagefaults? fix my collate_fn, maybe smaller batch size + grad accum, 
+- torch_as_tensor vs. torch_as numpy - https://discuss.pytorch.org/t/from-numpy-vs-as-tensor/79932
+- 12/06, first attempt at teacher forcing, no bueno
+- 12/08, second attempt at teacher forcing no bueno, disabled torch compile training everything in float32
+- 12/09, added discriminator, and noise at all times 5%, kind of helping? not sure, still not sure if im training it long enough, also discriminator seems buggy not doing anything, i think added noise is doing more here - also sampling schedule jumps seem to large, maybe need to tone it down, train longer for smoother training with just l1 loss for now
+- questions: are my controls even responding?
+- TODO: ask ollin some questions on this, figure out key stuff to ask before sending message
+- TODO: fix inference harness, show real frames, and also 32 frames that go into the thing
+- TODO: add config to scale up or downscale model sizes for testing

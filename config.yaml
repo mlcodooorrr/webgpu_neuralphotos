@@ -1,0 +1,43 @@
+name: "nf_4_linear_global_attn_only"
+description: "playground"
+
+setup_command: "pip install -r requirements.txt"
+command: 'bash train_run.sh'
+
+environment_variables:
+  AWS_ACCESS_KEY_ID: "981021ef-8969-4f66-8ecb-0befc83599ce" # simcloud token for conductor
+  AWS_SECRET_ACCESS_KEY: "niranjan_s"
+  BUCKET: "niranjan-s-personal"
+  DATA_PATH: "flappy_dataset_5/"
+  REMOTE_NAME: "flappy_dataset_5"
+  WANDB_API_KEY: "db374738144043c98428d3af0b4d53939362f3b3"
+  # needs underscores, gets added to conductor file path
+  VERSIONING: "train_mqa"
+
+# resources:
+#   # if you want to use a docker to train
+#   docker_image: docker.apple.com/dataflow/base:py39
+#   task_type: 4gpu
+
+# p4de.24xlarge a100 80gb
+# p4d.24xlarge a100 40gb
+# p5.48xlarge h100 80gb
+# p6-b200.48xlarge b200 180gb
+
+project_id: playground #a project_id is needed for preemptible tier task
+scheduling_options:
+  tiers: preemptible # mandatory call for preemptible tier
+cluster_options:
+    aws:
+      instance_type: p5.48xlarge
+resources:
+  # if you want to use a docker to train
+  docker_image: docker.apple.com/dataflow/base:py311
+  task_type: 1gpu
+  cluster: AWS_ALL
+
+  # num_cpus: 10
+  # num_gpus: 8
+  timeout: 5d
+  # memory_gb: 40
+  # disk_gb: 100
