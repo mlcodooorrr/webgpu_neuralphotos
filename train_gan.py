@@ -623,6 +623,6 @@ if __name__ == "__main__":
         save_checkpoint(G, D, optimizer_G, optimizer_D, epoch, config, run_dir, 'latest.pth')
 
     print("\n" + "=" * 70)
-    print("✅ Training Complete!")
-    print(f"📁 Results saved to: {run_dir}")
+    print("Training Complete")
+    print(f"Results saved to: {run_dir}")
     print("=" * 70)
