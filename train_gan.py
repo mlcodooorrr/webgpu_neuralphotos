@@ -15,8 +15,8 @@ import torch.cuda.nvtx as nvtx
 
 from torch.amp import autocast
 
+TODO: open loop pretrain -> closed loop finetune with generated images, implement rollout code, current schedulers not working
 
-# ==================== CONFIGURATION ====================
 class Config:
     batch_size = 1024
     num_epochs = 400
@@ -120,72 +120,10 @@ def add_noise_to_inputs(past_0, past_1, past_2, past_3, noise_level=0.01):
     
     return past_0, past_1, past_2, past_3
 
-def inference_stability_check(G, val_loader, config, num_frames=100):
-    """
-    Run autoregressive inference and check if outputs stay stable.
-    Returns stats dict.
-    """
-    G.eval()
-    
-    # Get one batch for initial memory
-    inputs, targets = next(iter(val_loader))
-    
-    controls = inputs['controls'][0:1].to(device)  # Just 1 sample
-    past_0 = inputs['past_0'][0:1].to(device)
-    past_1 = inputs['past_1'][0:1].to(device)
-    past_2 = inputs['past_2'][0:1].to(device)
-    past_3 = inputs['past_3'][0:1].to(device)
-    
-    means = []
-    stds = []
-    
-    with torch.no_grad():
-        for i in range(num_frames):
-            noise_0, noise_1, noise_2, noise_3 = generate_noise(device, 1)
-            
-            generated = G(controls, past_0, past_1, past_2, past_3,
-                         noise_0, noise_1, noise_2, noise_3)
-            
-            means.append(generated.mean().item())
-            stds.append(generated.std().item())
-            
-            # Update memory
-            past_3 = torch.cat([past_3[:, 1:], generated.unsqueeze(1)], dim=1)
-            
-            gen_64x48 = F.interpolate(generated, size=(64, 48), mode='area')
-            past_2 = torch.cat([past_2[:, 1:], gen_64x48.unsqueeze(1)], dim=1)
-            
-            gen_16x12 = F.interpolate(generated, size=(16, 12), mode='area')
-            past_1 = torch.cat([past_1[:, 1:], gen_16x12.unsqueeze(1)], dim=1)
-            
-            gen_4x3 = F.interpolate(generated, size=(4, 3), mode='area')
-            past_0 = torch.cat([past_0[:, 1:], gen_4x3.unsqueeze(1)], dim=1)
-    
-    G.train()
-    
-    return {
-        'mean_start': means[0],
-        'mean_end': means[-1],
-        'mean_drift': abs(means[-1] - means[0]),
-        'std_start': stds[0],
-        'std_end': stds[-1],
-        'std_drift': abs(stds[-1] - stds[0]),
-    }
-
 def generate_autoregressive_memory(G, controls, past_0, past_1, past_2, past_3, 
                                    num_steps, device):
     """
     Generate multiple frames autoregressively to replace memory buffer
-    
-    Args:
-        G: Generator model
-        controls: (B, 16) control vector
-        past_0, past_1, past_2, past_3: Initial memory buffers
-        num_steps: How many frames to generate
-        device: torch device
-    
-    Returns:
-        Updated memory buffers with generated frames
     """
     B = controls.shape[0]
     
@@ -221,6 +159,7 @@ def generate_autoregressive_memory(G, controls, past_0, past_1, past_2, past_3,
 def train_one_epoch(G, D, optimizer_G, optimizer_D, train_loader, epoch, config, logger, run_dir):
     """Train for one epoch - GAN with L1"""
 
+    # profiling
     # nvtx.range_push(f"Epoch {epoch}")
 
     G.train()
@@ -359,7 +298,6 @@ def train_one_epoch(G, D, optimizer_G, optimizer_D, train_loader, epoch, config,
         # LOG BATCH METRICS
         logger.log_batch(epoch, batch_idx, batch_metrics)
 
-        
         # if batch_idx == 5:
         #     profiler.start()
         # if batch_idx == 10:
@@ -374,7 +312,6 @@ def train_one_epoch(G, D, optimizer_G, optimizer_D, train_loader, epoch, config,
             print(f"  G L1: {g_l1_loss.item():.4f}")
             print(f"  Scheduled Sampling: {num_generated_frames} frames @ {sampling_probability:.0%} prob | This batch: {'YES' if used_scheduled_sampling else 'NO'}")
             
-            # ✅ NEW: Show scheduled sampling info
             if num_generated_frames > 0:
                 print(f"  🔄 Scheduled Sampling: {num_generated_frames} generated frames")
             
@@ -401,12 +338,12 @@ def train_one_epoch(G, D, optimizer_G, optimizer_D, train_loader, epoch, config,
                 'D': f'{d_loss.item():.3f}',
                 'G_adv': f'{g_adv_loss.item():.3f}',
                 'G_L1': f'{g_l1_loss.item():.3f}',
-                'GenFrames': num_generated_frames  # ✅ NEW
+                'GenFrames': num_generated_frames
             })
         else:
             pbar.set_postfix({
                 'G_L1': f'{g_l1_loss.item():.3f}',
-                'GenFrames': num_generated_frames  # ✅ NEW
+                'GenFrames': num_generated_frames
             })
     
     # nvtx.range_pop()
@@ -505,35 +442,26 @@ def save_checkpoint(G, D, optimizer_G, optimizer_D, epoch, config, run_dir, file
         }
     }, filepath)
     
-    print(f"✅ Checkpoint saved: {filepath}")
+    print(f"Checkpoint saved: {filepath}")
 
 
 def load_checkpoint(G, D, optimizer_G, optimizer_D, filepath):
-    """Load model checkpoint, handling compiled models"""
-    checkpoint = torch.load(filepath, map_location='cpu')
-    
-    # ✅ NEW: Handle compiled model checkpoints (strip _orig_mod. prefix)
+    checkpoint = torch.load(filepath, map_location='cpu')    
     g_state_dict = checkpoint['generator_state_dict']
     d_state_dict = checkpoint['discriminator_state_dict']
-    
-    # Remove _orig_mod. prefix if present (from torch.compile)
-    g_state_dict = {k.replace('_orig_mod.', ''): v for k, v in g_state_dict.items()}
-    d_state_dict = {k.replace('_orig_mod.', ''): v for k, v in d_state_dict.items()}
-    
+        
     # Load state dicts
     G.load_state_dict(g_state_dict)
     D.load_state_dict(d_state_dict)
     optimizer_G.load_state_dict(checkpoint['optimizer_G_state_dict'])
-    optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])
-    
+    optimizer_D.load_state_dict(checkpoint['optimizer_D_state_dict'])    
     epoch = checkpoint['epoch']
-    print(f"✅ Checkpoint loaded from epoch {epoch}")
     
     return epoch
 
 
 def weights_init_generator(m):
-    """Weight initialization for generator"""
+    """weight initialization for generator"""
     classname = m.__class__.__name__
     
     if classname.find('Conv2d') != -1:
@@ -548,7 +476,7 @@ def weights_init_generator(m):
 
 
 def weights_init_discriminator(m):
-    """Weight initialization for discriminator"""
+    """weight initialization for discriminator"""
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
@@ -581,34 +509,33 @@ if __name__ == "__main__":
 
     print("="*70)
     if config.lambda_adv > 0:
-        print("🎯 GAN TRAINING MODE (L1 + Adversarial)")
+        print("L1 + Adverserial")
     else:
-        print("🎯 L1-ONLY TRAINING MODE")
+        print("L1 Only")
     print("="*70)
     
-    # ========== SETUP MODELS ==========
+    # model setup
     print("Setting up models...")
     # Generator
     G = GAN().to(device)
     # Discriminator
     D = SimpleDiscriminator().to(device)
 
-    # ========== SETUP OPTIMIZERS ==========
+    # optimizer setup
     optimizer_G = torch.optim.AdamW(G.parameters(), lr=config.lr_g, betas=config.betas)
     optimizer_D = torch.optim.AdamW(D.parameters(), lr=config.lr_d, betas=config.betas)
 
-    # ========== SETUP CHECKPOINT PATH ==========
+    # checkpoint path
     start_epoch = 0
     checkpoint_path = f"training_runs/{run_name}/checkpoints/latest.pth"
 
     print("Loading pretrained L1 generator...")
     if os.path.exists(checkpoint_path):
-        print(f"📂 Found checkpoint: {checkpoint_path}")
         start_epoch = load_checkpoint(G, D, optimizer_G, optimizer_D, checkpoint_path)
         start_epoch += 1  # Start from next epoch
-        print(f"🔄 Resuming training from epoch {start_epoch}")
+        print(f"resuming training {start_epoch}")
     else:
-        print("⚠️ No checkpoint found, starting fresh")
+        print("No checkpoint found, starting fresh")
         G.apply(weights_init_generator)
         if config.lambda_adv > 0:
             D.apply(weights_init_discriminator)
@@ -624,25 +551,25 @@ if __name__ == "__main__":
         d_num_params = sum(p.numel() for p in D.parameters())
         print(f"Number of parameters in Discriminator: {d_num_params:,}")
 
-    # ========== SETUP BATCHES PER EPOCH ==========
+    # batches per epoch
     if config.batches_per_epoch is None:
         train_samples = int(25198 * 0.9)  # 90% train split
         config.batches_per_epoch = train_samples // config.batch_size
         print(f"📊 Batches per epoch: {config.batches_per_epoch} (full dataset pass)")
     
-    # ========== SETUP DATA ==========
+    # dataloaders
     train_loader = distributed_data_loader(B=batch_size, split="train", device=device)
     val_loader = distributed_data_loader(B=batch_size, split="val", device=device)
     
     inputs, targets = next(iter(train_loader))    
 
-    # ========== SETUP LOGGER ==========
+    # logger setup
     log_file = os.path.join(run_dir, "training_log.json")
     logger = TrainingLogger(log_file)
     logger.log_config(config)
     print(f"📝 Logging to: {log_file}")
     
-    # ========== TRAINING LOOP ==========    
+    # train!
     for epoch in range(start_epoch, config.num_epochs):
         print(f"\n{'='*70}")
         if config.lambda_adv > 0:
@@ -662,7 +589,6 @@ if __name__ == "__main__":
         #     break
 
         # # # Exit after first epoch when profiling
-        # print("\n✅ Profiling complete! Exiting.")
         # break
 
         logger.log_train_epoch(epoch, train_metrics)
@@ -679,17 +605,7 @@ if __name__ == "__main__":
         if (epoch + 1) % config.val_interval == 0:
             print(f"\n🔍 Running validation...")
             val_metrics = validate(G, D, val_loader, config)
-
-            # Inference stability check
-            print(f"\n🔬 Running inference stability check...")
-            stability = inference_stability_check(G, val_loader, config, num_frames=100)
-            print(f"  Mean: {stability['mean_start']:.3f} → {stability['mean_end']:.3f} (drift: {stability['mean_drift']:.3f})")
-            print(f"  Std:  {stability['std_start']:.3f} → {stability['std_end']:.3f} (drift: {stability['std_drift']:.3f})")
             
-            # Warn if drifting badly
-            if stability['mean_drift'] > 0.1 or stability['std_drift'] > 0.1:
-                print(f"  ⚠️ WARNING: Significant drift detected!")
-
             logger.log_val(epoch, val_metrics)
             
             print(f"\n📊 Validation Summary:")
