@@ -1,5 +1,6 @@
-log.md
+Log of my work so far
 
+Start date: 11/25?
 - duped dataloaders from nanochat
 - ollin's boer's GAN structure ~ Conv2ds + PixelShuffles for the generator
 - TODO: discriminator needs to be fixed lol, right now just copy and paste from some random source
