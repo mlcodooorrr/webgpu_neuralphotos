@@ -1,7 +1,7 @@
 log.md
 
 - copied dataloaders from nanochat
-- cloned ollin's boer's gan structure from onnx
+- ollin's boer's gan structure from onnx file for now
 - geneartd chat gpt Discriminator based on GAN
 - tried generating images got Nans and black images when training on mps with l1 + adverserial loss
 - tried just l1 loss, would work a little bit and then would Nan
@@ -56,6 +56,9 @@ log.md
 - 12/08, second attempt at teacher forcing no bueno, disabled torch compile training everything in float32
 - 12/09, added discriminator, and noise at all times 5%, kind of helping? not sure, still not sure if im training it long enough, also discriminator seems buggy not doing anything, i think added noise is doing more here - also sampling schedule jumps seem to large, maybe need to tone it down, train longer for smoother training with just l1 loss for now
 - questions: are my controls even responding?
-- TODO: ask ollin some questions on this, figure out key stuff to ask before sending message
 - TODO: fix inference harness, show real frames, and also 32 frames that go into the thing
 - TODO: add config to scale up or downscale model sizes for testing
+- for now forget any training or inference optimizations, get the base model working I will deal with the optimizations later. Right now a solid version should take around a day
+- TODO: restructure training code -> open loop pretrain -> closed loop finetune with generated images
+- https://github.com/eloialonso/diamond/blob/main/src/models/diffusion/denoiser.py#L118 -> for closed loop, need to track rollouts at some points with noisy outputs
+- TODO: need to cleanup dataset, i think the 6DOF controls and action-frames are not aligned well, main priority before any more training
