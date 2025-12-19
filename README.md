@@ -61,6 +61,7 @@ Start date: 11/25?
 - TODO: fix inference harness, show real frames, and also 32 frames that go into the thing
 - TODO: add config to scale up or downscale model sizes for testing
 - for now forget any training or inference optimizations, get the base model working I will deal with the optimizations later. Right now a solid version should take around a day
-- TODO: restructure training code -> open loop pretrain -> closed loop finetune with generated images
+- TODO: restructure training code -> open loop pretrain -> closed loop finetune with generated images.
+- Right now scheduler implementation is really finicky and just drifts, seems too complex
 - https://github.com/eloialonso/diamond/blob/main/src/models/diffusion/denoiser.py#L118 -> for closed loop, need to track rollouts at some points with noisy outputs
 - TODO: need to cleanup dataset, i think the 6DOF controls and action-frames are not aligned well, main priority before any more training
